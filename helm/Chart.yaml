@@ -1,0 +1,21 @@
+apiVersion: v2
+name: kognos
+description: |
+  KOGNOS — Multi-Agent Kubernetes Observability Platform.
+  Real-time anomaly detection via eBPF + GraphSAGE GNN + RAG conversational AI.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - observability
+  - anomaly-detection
+  - ebpf
+  - gnn
+  - rag
+home: https://github.com/Andreamercy/KOGNOS
+sources:
+  - https://github.com/Andreamercy/KOGNOS
+maintainers:
+  - name: Andrea Mercy
+    url: https://github.com/Andreamercy

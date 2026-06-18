@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Release.Name }}-ebpf-loader
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kognos
+    app.kubernetes.io/component: ebpf-loader
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kognos
+      app.kubernetes.io/component: ebpf-loader
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kognos
+        app.kubernetes.io/component: ebpf-loader
+      annotations:
+        # Prometheus metrics scraping (future extension)
+        prometheus.io/scrape: "false"
+    spec:
+      # eBPF loader must run on the host network and have kernel access
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+        # Run on all nodes including control-plane
+        - operator: Exists
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+      containers:
+        - name: kognos-loader
+          image: "{{ .Values.ebpfLoader.image.repository }}:{{ .Values.ebpfLoader.image.tag }}"
+          imagePullPolicy: {{ .Values.ebpfLoader.image.pullPolicy }}
+          command:
+            - /kognos-loader
+          env:
+            - name: KAFKA_BOOTSTRAP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
+                  key: kafkaBootstrap
+            - name: KAFKA_TOPIC_FLOWS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
+                  key: kafkaTopicFlows
+          securityContext:
+            privileged: true   # Required for eBPF kprobe attachment
+          volumeMounts:
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: debugfs
+              mountPath: /sys/kernel/debug
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+          resources:
+            {{- toYaml .Values.ebpfLoader.resources | nindent 12 }}
+      volumes:
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: debugfs
+          hostPath:
+            path: /sys/kernel/debug
+        - name: host-proc
+          hostPath:
+            path: /proc
+      terminationGracePeriodSeconds: 30

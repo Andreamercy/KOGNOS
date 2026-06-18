@@ -1,0 +1,131 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kognos
+    app.kubernetes.io/component: api
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kognos
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kognos
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: kognos-api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: anthropicApiKey
+            - name: QDRANT_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
+                  key: qdrantHost
+            - name: QDRANT_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
+                  key: qdrantPort
+            - name: KAFKA_BOOTSTRAP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
+                  key: kafkaBootstrap
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-config
+                  key: redisUrl
+            - name: LOG_LEVEL
+              value: {{ .Values.api.env.LOG_LEVEL | quote }}
+            - name: DRY_RUN
+              value: {{ .Values.api.env.DRY_RUN | quote }}
+            - name: LLM_BACKEND
+              value: {{ .Values.api.env.LLM_BACKEND | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: {{ .Values.api.service.type }}
+  selector:
+    app.kubernetes.io/name: kognos
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: {{ .Values.api.service.port }}
+      targetPort: http
+---
+# GNN Inference Engine Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-inference
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: kognos
+    app.kubernetes.io/component: inference
+spec:
+  replicas: {{ .Values.inference.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kognos
+      app.kubernetes.io/component: inference
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kognos
+        app.kubernetes.io/component: inference
+    spec:
+      containers:
+        - name: kognos-inference
+          image: "{{ .Values.inference.image.repository }}:{{ .Values.inference.image.tag }}"
+          imagePullPolicy: {{ .Values.inference.image.pullPolicy }}
+          args:
+            - python
+            - -m
+            - graph.inference.engine
+            - --model-path={{ .Values.inference.modelPath }}
+            - --interval={{ .Values.inference.intervalSeconds }}
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+          resources:
+            {{- toYaml .Values.inference.resources | nindent 12 }}
+      volumes:
+        - name: model-storage
+          emptyDir: {}

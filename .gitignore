@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment secrets — NEVER commit
+.env
+*.env.local
+*.env.production
+
+# Model checkpoints (large binary files)
+models/*.pt
+models/*.pth
+models/*.bin
+*.ckpt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Go build artifacts
+ebpf/loader/kognos-loader
+ebpf/probes/*.o
+ebpf/probes/*.skel.h
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docker volumes (if mounted locally)
+qdrant_storage/
+kafka_data/
+redis_data/
+
+# Node (if any tooling)
+node_modules/

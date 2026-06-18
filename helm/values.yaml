@@ -1,0 +1,103 @@
+# ── KOGNOS Helm Values ────────────────────────────────────────────────────────
+# Override in deployment: helm install kognos ./helm --set key=value
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# ── API Server ────────────────────────────────────────────────────────────────
+api:
+  image:
+    repository: ghcr.io/andreamercy/kognos-api
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  service:
+    type: ClusterIP
+    port: 8000
+  env:
+    LOG_LEVEL: info
+    KOGNOS_DEMO_MODE: "false"
+    DRY_RUN: "true"
+    LLM_BACKEND: anthropic
+    ANOMALY_THRESHOLD: "0.75"
+    AUTO_HEAL_THRESHOLD: "0.9"
+
+# ── GNN Inference Engine ──────────────────────────────────────────────────────
+inference:
+  image:
+    repository: ghcr.io/andreamercy/kognos-inference
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  modelPath: /models/graphsage_v1.pt
+  intervalSeconds: 10
+
+# ── eBPF Loader (DaemonSet) ───────────────────────────────────────────────────
+ebpfLoader:
+  image:
+    repository: ghcr.io/andreamercy/kognos-loader
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  # Requires privileged + hostPID for kernel probe access
+  securityContext:
+    privileged: true
+    hostPID: true
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+# ── Secrets (set at deploy time) ─────────────────────────────────────────────
+secrets:
+  anthropicApiKey: ""   # --set secrets.anthropicApiKey=sk-ant-...
+
+# ── External services ─────────────────────────────────────────────────────────
+qdrant:
+  host: qdrant-service
+  port: 6333
+  collection: kognos_knowledge
+
+kafka:
+  bootstrapServers: kafka-service:9092
+  topicFlows: ebpf-flows
+  topicAlerts: kognos-alerts
+
+redis:
+  url: redis://redis-service:6379
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: kognos.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ── ServiceAccount ────────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: kognos
+  annotations: {}

@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KOGNOS — Kubernetes Observability Platform</title>
+  <meta name="description" content="Real-time Kubernetes anomaly detection powered by eBPF, GraphSAGE GNN, and RAG-based AI agents." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+
+  <style>
+    @layer reset, base, components, utilities;
+
+    @layer reset {
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { color-scheme: dark; }
+    }
+
+    @layer base {
+      :root {
+        --bg-deep:     hsl(225 30% 5%);
+        --bg-panel:    hsl(225 25% 9%);
+        --bg-glass:    hsl(225 25% 13% / 0.6);
+        --border:      hsl(220 20% 20%);
+        --border-glow: hsl(195 100% 50% / 0.25);
+
+        --cyan:        hsl(195 100% 55%);
+        --cyan-dim:    hsl(195 100% 55% / 0.15);
+        --green:       hsl(145 80% 48%);
+        --green-dim:   hsl(145 80% 48% / 0.12);
+        --amber:       hsl(38 95% 55%);
+        --amber-dim:   hsl(38 95% 55% / 0.12);
+        --red:         hsl(0 90% 58%);
+        --red-dim:     hsl(0 90% 58% / 0.12);
+        --purple:      hsl(265 80% 65%);
+        --purple-dim:  hsl(265 80% 65% / 0.12);
+
+        --text-1: hsl(220 20% 95%);
+        --text-2: hsl(220 15% 65%);
+        --text-3: hsl(220 10% 45%);
+
+        --radius-sm: 8px;
+        --radius:    12px;
+        --radius-lg: 18px;
+
+        --shadow: 0 4px 24px hsl(0 0% 0% / 0.4);
+        --glow-cyan: 0 0 30px hsl(195 100% 55% / 0.12);
+      }
+
+      body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--bg-deep);
+        color: var(--text-1);
+        min-height: 100dvh;
+        overflow-x: hidden;
+        background-image:
+          radial-gradient(ellipse 80% 40% at 20% 0%, hsl(195 100% 55% / 0.04) 0%, transparent 60%),
+          radial-gradient(ellipse 60% 30% at 80% 100%, hsl(265 80% 65% / 0.04) 0%, transparent 60%);
+      }
+
+      a { color: inherit; text-decoration: none; }
+      button { cursor: pointer; font-family: inherit; }
+      input, textarea { font-family: inherit; }
+    }
+
+    @layer components {
+
+      /* ── Header ── */
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 18px 28px;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-glass);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 1.2rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .logo-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--cyan), var(--purple));
+        display: grid;
+        place-items: center;
+        font-size: 18px;
+        box-shadow: 0 0 20px hsl(195 100% 55% / 0.3);
+        animation: pulse-logo 3s ease-in-out infinite;
+      }
+
+      @keyframes pulse-logo {
+        0%, 100% { box-shadow: 0 0 20px hsl(195 100% 55% / 0.3); }
+        50%       { box-shadow: 0 0 40px hsl(195 100% 55% / 0.5); }
+      }
+
+      .header-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-inline-start: auto;
+        font-size: 0.8rem;
+        color: var(--text-2);
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: pulse-dot 2s ease-in-out infinite;
+      }
+
+      .status-dot.disconnected { background: var(--red); animation: none; }
+
+      @keyframes pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.5; transform: scale(0.85); }
+      }
+
+      .header-stat {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .header-stat.critical { background: var(--red-dim); color: var(--red); }
+      .header-stat.warning  { background: var(--amber-dim); color: var(--amber); }
+      .header-stat.healthy  { background: var(--green-dim); color: var(--green); }
+
+      /* ── Main layout ── */
+      .main {
+        display: grid;
+        grid-template-columns: 340px 1fr;
+        grid-template-rows: auto 1fr;
+        gap: 0;
+        height: calc(100dvh - 73px);
+      }
+
+      .sidebar {
+        grid-row: 1 / -1;
+        border-inline-end: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .content {
+        display: grid;
+        grid-template-rows: 1fr 320px;
+        overflow: hidden;
+      }
+
+      /* ── Panel ── */
+      .panel {
+        padding: 20px;
+        border-block-end: 1px solid var(--border);
+        overflow-y: auto;
+      }
+
+      .panel-title {
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-3);
+        margin-block-end: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .panel-title .count-badge {
+        background: var(--cyan-dim);
+        color: var(--cyan);
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+      }
+
+      /* ── Alerts ── */
+      #alerts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .alert-card {
+        border-radius: var(--radius-sm);
+        padding: 12px 14px;
+        border: 1px solid transparent;
+        transition: border-color 0.2s, transform 0.15s;
+        cursor: default;
+        animation: slide-in 0.3s ease;
+      }
+
+      @keyframes slide-in {
+        from { opacity: 0; transform: translateX(-12px); }
+        to   { opacity: 1; transform: translateX(0); }
+      }
+
+      .alert-card:hover { transform: translateX(3px); }
+
+      .alert-card.critical {
+        background: var(--red-dim);
+        border-color: hsl(0 90% 58% / 0.3);
+      }
+      .alert-card.warning {
+        background: var(--amber-dim);
+        border-color: hsl(38 95% 55% / 0.3);
+      }
+      .alert-card.info {
+        background: var(--cyan-dim);
+        border-color: hsl(195 100% 55% / 0.2);
+      }
+
+      .alert-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-block-end: 6px;
+      }
+
+      .severity-badge {
+        font-size: 0.64rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 4px;
+      }
+      .severity-badge.critical { background: var(--red);    color: hsl(0 0% 0%); }
+      .severity-badge.warning  { background: var(--amber);  color: hsl(0 0% 0%); }
+      .severity-badge.info     { background: var(--cyan);   color: hsl(0 0% 0%); }
+
+      .alert-pod {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: var(--text-1);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+
+      .alert-score {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--text-2);
+        flex-shrink: 0;
+      }
+
+      .alert-action {
+        font-size: 0.74rem;
+        color: var(--text-2);
+        margin-block-start: 4px;
+      }
+
+      .score-bar-wrap {
+        height: 3px;
+        border-radius: 2px;
+        background: hsl(220 20% 20%);
+        margin-block-start: 8px;
+        overflow: hidden;
+      }
+      .score-bar {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.5s ease;
+      }
+      .critical .score-bar { background: var(--red); }
+      .warning  .score-bar { background: var(--amber); }
+      .info     .score-bar { background: var(--cyan); }
+
+      .no-alerts {
+        text-align: center;
+        padding: 32px 16px;
+        color: var(--text-3);
+      }
+      .no-alerts .icon { font-size: 2.5rem; margin-block-end: 8px; }
+      .no-alerts p { font-size: 0.82rem; }
+
+      /* ── Graph ── */
+      #graph-container {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+        background:
+          radial-gradient(ellipse 60% 50% at 50% 50%, hsl(195 100% 55% / 0.03) 0%, transparent 70%);
+      }
+
+      #graph-container svg { width: 100%; height: 100%; }
+
+      .node-tooltip {
+        position: absolute;
+        background: var(--bg-panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        font-size: 0.78rem;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s;
+        z-index: 50;
+        max-width: 220px;
+        box-shadow: var(--shadow);
+      }
+
+      .node-tooltip.visible { opacity: 1; }
+
+      .tooltip-name {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+        font-weight: 600;
+        margin-block-end: 6px;
+        color: var(--text-1);
+      }
+
+      .tooltip-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--text-2);
+        margin-block-start: 3px;
+      }
+
+      .tooltip-row span:last-child {
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--text-1);
+      }
+
+      /* ── Query chat ── */
+      .chat-area {
+        border-block-start: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        scroll-behavior: smooth;
+      }
+
+      .chat-messages::-webkit-scrollbar { width: 4px; }
+      .chat-messages::-webkit-scrollbar-track { background: transparent; }
+      .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+      .message {
+        display: flex;
+        gap: 10px;
+        animation: msg-in 0.25s ease;
+        max-width: 90%;
+      }
+
+      @keyframes msg-in {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      .message.user { align-self: flex-end; flex-direction: row-reverse; }
+
+      .message-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+
+      .user .message-avatar { background: linear-gradient(135deg, var(--cyan), var(--purple)); }
+      .assistant .message-avatar { background: hsl(220 20% 18%); border: 1px solid var(--border); }
+
+      .message-body {
+        background: hsl(220 25% 13%);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 13px;
+        font-size: 0.83rem;
+        line-height: 1.55;
+        color: var(--text-1);
+        max-width: 100%;
+      }
+
+      .user .message-body {
+        background: var(--cyan-dim);
+        border-color: hsl(195 100% 55% / 0.25);
+        color: var(--text-1);
+      }
+
+      .message-body code {
+        font-family: 'JetBrains Mono', monospace;
+        background: hsl(220 20% 8%);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 0.78rem;
+        color: var(--cyan);
+        display: inline-block;
+        margin-block: 3px;
+        word-break: break-all;
+      }
+
+      .message-sources {
+        margin-block-start: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .source-tag {
+        font-size: 0.68rem;
+        font-family: 'JetBrains Mono', monospace;
+        background: var(--purple-dim);
+        color: var(--purple);
+        border: 1px solid hsl(265 80% 65% / 0.2);
+        padding: 2px 7px;
+        border-radius: 4px;
+      }
+
+      .chat-form {
+        padding: 12px 20px 16px;
+        display: flex;
+        gap: 10px;
+        border-block-start: 1px solid var(--border);
+      }
+
+      .chat-input {
+        flex: 1;
+        background: hsl(220 25% 11%);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+        color: var(--text-1);
+        font-size: 0.85rem;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      .chat-input:focus {
+        border-color: hsl(195 100% 55% / 0.5);
+        box-shadow: 0 0 0 3px hsl(195 100% 55% / 0.08);
+      }
+
+      .chat-input::placeholder { color: var(--text-3); }
+
+      .chat-btn {
+        background: linear-gradient(135deg, var(--cyan), hsl(195 100% 40%));
+        color: hsl(0 0% 0%);
+        border: none;
+        border-radius: var(--radius-sm);
+        padding: 10px 18px;
+        font-size: 0.83rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        transition: opacity 0.2s, transform 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .chat-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+      .chat-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      /* ── Top stats bar ── */
+      .stats-bar {
+        display: flex;
+        gap: 0;
+        border-block-end: 1px solid var(--border);
+      }
+
+      .stat-tile {
+        flex: 1;
+        padding: 16px 20px;
+        border-inline-end: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .stat-tile:last-child { border-inline-end: none; }
+
+      .stat-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-3);
+      }
+
+      .stat-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+
+      .stat-value.cyan   { color: var(--cyan); }
+      .stat-value.red    { color: var(--red); }
+      .stat-value.amber  { color: var(--amber); }
+      .stat-value.green  { color: var(--green); }
+      .stat-value.purple { color: var(--purple); }
+
+      .stat-sub {
+        font-size: 0.72rem;
+        color: var(--text-3);
+        margin-block-start: 2px;
+      }
+
+      /* ── Typing indicator ── */
+      .typing-dots {
+        display: flex;
+        gap: 4px;
+        padding: 6px 0;
+        align-items: center;
+      }
+      .typing-dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--cyan);
+        animation: typing 1.2s ease-in-out infinite;
+      }
+      .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+      .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+      @keyframes typing {
+        0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+        40%           { opacity: 1; transform: scale(1); }
+      }
+
+      /* ── Graph legend ── */
+      .graph-legend {
+        position: absolute;
+        bottom: 12px;
+        inset-inline-end: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        background: var(--bg-glass);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 13px;
+        font-size: 0.7rem;
+        color: var(--text-2);
+      }
+
+      .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .legend-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      /* ── Scrollbar ── */
+      .sidebar::-webkit-scrollbar,
+      .panel::-webkit-scrollbar { width: 4px; }
+      .sidebar::-webkit-scrollbar-track,
+      .panel::-webkit-scrollbar-track { background: transparent; }
+      .sidebar::-webkit-scrollbar-thumb,
+      .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+      /* ── Loading shimmer ── */
+      .shimmer {
+        background: linear-gradient(90deg,
+          hsl(220 20% 15%) 0%,
+          hsl(220 20% 20%) 50%,
+          hsl(220 20% 15%) 100%
+        );
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 6px;
+        height: 56px;
+      }
+      @keyframes shimmer {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      /* ── Graph panel title ── */
+      .graph-header {
+        position: absolute;
+        top: 12px;
+        inset-inline-start: 12px;
+        background: var(--bg-glass);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 8px 13px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-3);
+      }
+
+      /* ── Heal button in alerts ── */
+      .heal-btn {
+        margin-block-start: 8px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 5px;
+        border: 1px solid hsl(195 100% 55% / 0.3);
+        background: var(--cyan-dim);
+        color: var(--cyan);
+        letter-spacing: 0.04em;
+        transition: background 0.2s, border-color 0.2s;
+      }
+      .heal-btn:hover { background: hsl(195 100% 55% / 0.25); border-color: hsl(195 100% 55% / 0.5); }
+    }
+
+    @layer utilities {
+      .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon" aria-hidden="true">⬡</div>
+    KOGNOS
+    <span style="font-weight:300; color:var(--text-3); font-size:0.8rem; letter-spacing:0.01em;">
+      Kubernetes Observability
+    </span>
+  </div>
+
+  <div class="header-status">
+    <div class="status-dot" id="ws-dot"></div>
+    <span id="ws-label">Connecting…</span>
+    &nbsp;·&nbsp;
+    <span id="header-critical" class="header-stat critical" style="display:none"></span>
+    <span id="header-warning"  class="header-stat warning"  style="display:none"></span>
+    <span id="header-healthy"  class="header-stat healthy">Cluster healthy</span>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- ── Sidebar: Alerts ── -->
+  <aside class="sidebar">
+    <div class="panel" style="flex:0 0 auto; border-block-end: 1px solid var(--border);">
+      <p class="panel-title">
+        Live Alerts
+        <span class="count-badge" id="alert-count">0</span>
+      </p>
+      <div id="alerts-list">
+        <div class="shimmer"></div>
+        <div class="shimmer" style="height:40px; opacity:0.5"></div>
+      </div>
+    </div>
+
+    <!-- ── Sidebar: Pods table ── -->
+    <div class="panel" style="flex:1; overflow-y:auto;">
+      <p class="panel-title">Pod Anomaly Scores</p>
+      <div id="pods-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+  </aside>
+
+  <!-- ── Right content area ── -->
+  <div class="content">
+
+    <!-- Stats + Graph -->
+    <div style="display:grid; grid-template-rows: auto 1fr; overflow:hidden;">
+
+      <!-- Stats bar -->
+      <div class="stats-bar">
+        <div class="stat-tile">
+          <span class="stat-label">Nodes</span>
+          <span class="stat-value cyan" id="stat-nodes">—</span>
+          <span class="stat-sub">pods monitored</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Edges</span>
+          <span class="stat-value purple" id="stat-edges">—</span>
+          <span class="stat-sub">active flows</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Critical</span>
+          <span class="stat-value red" id="stat-critical">0</span>
+          <span class="stat-sub">score ≥ 0.9</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Warning</span>
+          <span class="stat-value amber" id="stat-warning">0</span>
+          <span class="stat-sub">score ≥ 0.75</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-label">Max Score</span>
+          <span class="stat-value" id="stat-max" style="color:var(--text-1)">—</span>
+          <span class="stat-sub" id="stat-max-pod" style="font-family:'JetBrains Mono',monospace; font-size:0.68rem;"></span>
+        </div>
+      </div>
+
+      <!-- Graph -->
+      <div id="graph-container">
+        <div class="graph-header">Cluster Dependency Graph</div>
+        <svg id="graph-svg"></svg>
+        <div class="graph-legend">
+          <div class="legend-row"><div class="legend-dot" style="background:var(--red)"></div> Critical (≥0.9)</div>
+          <div class="legend-row"><div class="legend-dot" style="background:var(--amber)"></div> Warning (≥0.75)</div>
+          <div class="legend-row"><div class="legend-dot" style="background:var(--cyan)"></div> Info (≥0.5)</div>
+          <div class="legend-row"><div class="legend-dot" style="background:hsl(220 15% 40%)"></div> Normal</div>
+        </svg>
+        </div>
+        <div class="node-tooltip" id="node-tooltip">
+          <div class="tooltip-name" id="tt-name"></div>
+          <div class="tooltip-row"><span>Score</span><span id="tt-score"></span></div>
+          <div class="tooltip-row"><span>CPU</span><span id="tt-cpu"></span></div>
+          <div class="tooltip-row"><span>Mem</span><span id="tt-mem"></span></div>
+          <div class="tooltip-row"><span>Restarts</span><span id="tt-restarts"></span></div>
+          <div class="tooltip-row"><span>Severity</span><span id="tt-severity"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Chat ── -->
+    <div class="chat-area">
+      <div class="chat-messages" id="chat-messages">
+        <div class="message assistant">
+          <div class="message-avatar">⬡</div>
+          <div class="message-body">
+            <strong>KOGNOS is ready.</strong> Ask me anything about your cluster — anomalies, blast radius, remediation steps, or historical incidents.<br/><br/>
+            Try: <em>"Why is payment-svc down?"</em> or <em>"Which pods are most likely to fail?"</em>
+          </div>
+        </div>
+      </div>
+      <form class="chat-form" id="chat-form">
+        <input
+          id="chat-input"
+          class="chat-input"
+          type="text"
+          placeholder="Ask KOGNOS anything about your cluster…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit" class="chat-btn" id="chat-btn">
+          <span>Ask</span>
+          <span aria-hidden="true">⌘↵</span>
+        </button>
+      </form>
+    </div>
+
+  </div><!-- /content -->
+</main>
+
+<script>
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = '';   // same origin
+const WS_URL = `ws://${location.host}/stream`;
+const GRAPH_REFRESH_MS = 15_000;
+const ALERTS_REFRESH_MS = 8_000;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let graphData  = { nodes: [], edges: [] };
+let wsConn     = null;
+let simulation = null;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $alertsList    = document.getElementById('alerts-list');
+const $alertCount    = document.getElementById('alert-count');
+const $podsList      = document.getElementById('pods-list');
+const $chatMessages  = document.getElementById('chat-messages');
+const $chatForm      = document.getElementById('chat-form');
+const $chatInput     = document.getElementById('chat-input');
+const $chatBtn       = document.getElementById('chat-btn');
+const $wsDot         = document.getElementById('ws-dot');
+const $wsLabel       = document.getElementById('ws-label');
+const $nodeTooltip   = document.getElementById('node-tooltip');
+
+// Stats
+const $statNodes    = document.getElementById('stat-nodes');
+const $statEdges    = document.getElementById('stat-edges');
+const $statCritical = document.getElementById('stat-critical');
+const $statWarning  = document.getElementById('stat-warning');
+const $statMax      = document.getElementById('stat-max');
+const $statMaxPod   = document.getElementById('stat-max-pod');
+
+// Header
+const $hdrCritical = document.getElementById('header-critical');
+const $hdrWarning  = document.getElementById('header-warning');
+const $hdrHealthy  = document.getElementById('header-healthy');
+
+// ── Severity helpers ──────────────────────────────────────────────────────────
+function severityColor(sev) {
+  return { critical: 'var(--red)', warning: 'var(--amber)', info: 'var(--cyan)', normal: 'hsl(220 15% 40%)' }[sev] || 'hsl(220 15% 40%)';
+}
+
+function scoreToSeverity(score) {
+  if (score >= 0.9)  return 'critical';
+  if (score >= 0.75) return 'warning';
+  if (score >= 0.5)  return 'info';
+  return 'normal';
+}
+
+function pct(v) { return (v * 100).toFixed(1) + '%'; }
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  wsConn = new WebSocket(WS_URL);
+
+  wsConn.addEventListener('open', () => {
+    $wsDot.classList.remove('disconnected');
+    $wsLabel.textContent = 'Live';
+  });
+
+  wsConn.addEventListener('message', (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'alerts') renderAlerts(msg.data || []);
+  });
+
+  wsConn.addEventListener('close', () => {
+    $wsDot.classList.add('disconnected');
+    $wsLabel.textContent = 'Reconnecting…';
+    setTimeout(connectWS, 3000);
+  });
+
+  wsConn.addEventListener('error', () => wsConn.close());
+
+  // Heartbeat
+  setInterval(() => {
+    if (wsConn.readyState === WebSocket.OPEN)
+      wsConn.send(JSON.stringify({ type: 'ping' }));
+  }, 30_000);
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+function renderAlerts(alerts) {
+  $alertCount.textContent = alerts.length;
+
+  // Header badges
+  const crits = alerts.filter(a => a.severity === 'critical').length;
+  const warns  = alerts.filter(a => a.severity === 'warning').length;
+
+  if (crits > 0) {
+    $hdrCritical.style.display = '';
+    $hdrCritical.textContent = `${crits} CRITICAL`;
+  } else { $hdrCritical.style.display = 'none'; }
+
+  if (warns > 0) {
+    $hdrWarning.style.display = '';
+    $hdrWarning.textContent = `${warns} WARNING`;
+  } else { $hdrWarning.style.display = 'none'; }
+
+  $hdrHealthy.style.display = (crits === 0 && warns === 0) ? '' : 'none';
+
+  $statCritical.textContent = crits;
+  $statWarning.textContent  = warns;
+
+  if (alerts.length === 0) {
+    $alertsList.innerHTML = `
+      <div class="no-alerts">
+        <div class="icon">✦</div>
+        <p>All systems nominal</p>
+      </div>`;
+    return;
+  }
+
+  $alertsList.innerHTML = alerts
+    .sort((a, b) => b.anomaly_score - a.anomaly_score)
+    .map(a => `
+      <div class="alert-card ${a.severity}">
+        <div class="alert-top">
+          <span class="severity-badge ${a.severity}">${a.severity}</span>
+          <span class="alert-pod" title="${a.pod}">${a.pod}</span>
+          <span class="alert-score">${a.anomaly_score.toFixed(3)}</span>
+        </div>
+        ${a.suggested_action ? `<div class="alert-action">↳ ${a.suggested_action}</div>` : ''}
+        <div class="score-bar-wrap">
+          <div class="score-bar" style="width:${(a.anomaly_score * 100).toFixed(1)}%"></div>
+        </div>
+        ${a.auto_healable ? `<button class="heal-btn" onclick="triggerHeal('${a.pod}')">⚡ Auto-heal (dry-run)</button>` : ''}
+      </div>`
+    ).join('');
+}
+
+// ── Graph data (polled) ───────────────────────────────────────────────────────
+async function fetchGraph() {
+  try {
+    const res  = await fetch(`${API}/graph`);
+    const data = await res.json();
+    graphData = data;
+
+    $statNodes.textContent = data.num_nodes;
+    $statEdges.textContent = data.num_edges;
+
+    const sorted = [...data.nodes].sort((a, b) => b.anomaly_score - a.anomaly_score);
+    if (sorted.length > 0) {
+      const top = sorted[0];
+      $statMax.textContent    = top.anomaly_score.toFixed(3);
+      $statMax.style.color    = severityColor(top.severity);
+      $statMaxPod.textContent = top.name;
+    }
+
+    renderGraph(data);
+    renderPodsList(data.nodes);
+  } catch (e) {
+    console.warn('Graph fetch failed:', e);
+  }
+}
+
+// ── Pods list ─────────────────────────────────────────────────────────────────
+function renderPodsList(nodes) {
+  const sorted = [...nodes].sort((a, b) => b.anomaly_score - a.anomaly_score);
+  $podsList.innerHTML = sorted.map(n => `
+    <div style="display:flex; align-items:center; gap:10px; padding:7px 10px;
+                border-radius:6px; background:hsl(220 25% 11%); border:1px solid var(--border);">
+      <div style="width:8px; height:8px; border-radius:50%; background:${severityColor(n.severity)}; flex-shrink:0;"></div>
+      <span style="font-family:'JetBrains Mono',monospace; font-size:0.78rem; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+            title="${n.name}">${n.name}</span>
+      <span style="font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:${severityColor(n.severity)};">${n.anomaly_score.toFixed(3)}</span>
+    </div>`
+  ).join('');
+}
+
+// ── D3 Force Graph ────────────────────────────────────────────────────────────
+function renderGraph(data) {
+  const container = document.getElementById('graph-container');
+  const svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  const nodeMap = new Map(data.nodes.map(n => [n.id, { ...n }]));
+
+  const links = data.edges
+    .filter(e => nodeMap.has(e.source) && nodeMap.has(e.target))
+    .map(e => ({ source: e.source, target: e.target, error_rate: e.error_rate }));
+
+  const nodes = data.nodes.map(n => ({ ...n }));
+
+  // Defs — arrowhead
+  const defs = svg.append('defs');
+  defs.append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -4 8 8')
+    .attr('refX', 18)
+    .attr('refY', 0)
+    .attr('markerWidth', 5)
+    .attr('markerHeight', 5)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-4L8,0L0,4')
+    .attr('fill', 'hsl(220 15% 30%)');
+
+  const g = svg.append('g');
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', e => g.attr('transform', e.transform)));
+
+  // Links
+  const link = g.append('g').selectAll('line').data(links).join('line')
+    .attr('stroke', d => d.error_rate > 0.15 ? 'hsl(38 95% 55% / 0.5)' : 'hsl(220 15% 30%)')
+    .attr('stroke-width', 1.5)
+    .attr('marker-end', 'url(#arrow)');
+
+  // Node glow filter
+  defs.append('filter').attr('id', 'glow').html(`
+    <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+    <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  `);
+
+  // Nodes
+  const node = g.append('g').selectAll('g').data(nodes).join('g')
+    .attr('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // Circle background (glow for anomalous)
+  node.append('circle')
+    .attr('r', d => 8 + d.anomaly_score * 8)
+    .attr('fill', d => severityColor(d.severity) + '22')
+    .attr('stroke', 'none')
+    .style('filter', d => d.anomaly_score > 0.5 ? 'url(#glow)' : '');
+
+  // Main circle
+  node.append('circle')
+    .attr('r', d => 6 + d.anomaly_score * 6)
+    .attr('fill', d => severityColor(d.severity) + '33')
+    .attr('stroke', d => severityColor(d.severity))
+    .attr('stroke-width', 1.5);
+
+  // Label
+  node.append('text')
+    .attr('dy', d => 12 + d.anomaly_score * 6)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '9px')
+    .attr('font-family', "'JetBrains Mono', monospace")
+    .attr('fill', 'hsl(220 15% 70%)')
+    .text(d => d.name);
+
+  // Tooltip
+  const tooltip = document.getElementById('node-tooltip');
+  node
+    .on('mousemove', (e, d) => {
+      document.getElementById('tt-name').textContent     = d.name;
+      document.getElementById('tt-score').textContent    = d.anomaly_score.toFixed(4);
+      document.getElementById('tt-cpu').textContent      = pct(d.cpu_usage);
+      document.getElementById('tt-mem').textContent      = pct(d.mem_usage);
+      document.getElementById('tt-restarts').textContent = d.restart_count;
+      document.getElementById('tt-severity').textContent = d.severity.toUpperCase();
+      tooltip.classList.add('visible');
+
+      const rect = container.getBoundingClientRect();
+      let tx = e.clientX - rect.left + 12;
+      let ty = e.clientY - rect.top  - 10;
+      if (tx + 220 > W) tx = tx - 234;
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top  = ty + 'px';
+    })
+    .on('mouseleave', () => tooltip.classList.remove('visible'))
+    .on('click', (e, d) => {
+      $chatInput.value = `Tell me about the ${d.name} pod. Anomaly score: ${d.anomaly_score.toFixed(3)}.`;
+      $chatInput.focus();
+    });
+
+  // Simulation
+  const sim = d3.forceSimulation(nodes)
+    .force('link',   d3.forceLink(links).id(d => d.id).distance(90).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-220))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('collision', d3.forceCollide(d => 14 + d.anomaly_score * 8))
+    .on('tick', () => {
+      link
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+  simulation = sim;
+}
+
+// ── Auto-heal (dry-run) ───────────────────────────────────────────────────────
+async function triggerHeal(pod) {
+  try {
+    const res  = await fetch(`${API}/heal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pod, dry_run: true, action: 'auto' }),
+    });
+    const data = await res.json();
+    addMessage('assistant', `**Auto-heal triggered (dry-run)** for \`${pod}\`\n\nCommand: \`${data.command}\`\n\n${data.message}`, []);
+  } catch(e) {
+    addMessage('assistant', `Heal request failed: ${e.message}`, []);
+  }
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+function addMessage(role, text, sources = []) {
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'message-avatar';
+  avatar.textContent = role === 'user' ? '▲' : '⬡';
+
+  const body = document.createElement('div');
+  body.className = 'message-body';
+
+  // Format: bold **text**, inline `code`
+  const formatted = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br/>');
+  body.innerHTML = formatted;
+
+  if (sources.length > 0) {
+    const srcDiv = document.createElement('div');
+    srcDiv.className = 'message-sources';
+    srcDiv.innerHTML = sources.map(s => `<span class="source-tag">${s.split('/').pop()}</span>`).join('');
+    body.appendChild(srcDiv);
+  }
+
+  div.appendChild(avatar);
+  div.appendChild(body);
+  $chatMessages.appendChild(div);
+  $chatMessages.scrollTop = $chatMessages.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const div = document.createElement('div');
+  div.className = 'message assistant';
+  div.id = 'typing-msg';
+  div.innerHTML = `
+    <div class="message-avatar">⬡</div>
+    <div class="message-body">
+      <div class="typing-dots"><span></span><span></span><span></span></div>
+    </div>`;
+  $chatMessages.appendChild(div);
+  $chatMessages.scrollTop = $chatMessages.scrollHeight;
+}
+
+function removeTyping() {
+  document.getElementById('typing-msg')?.remove();
+}
+
+$chatForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const question = $chatInput.value.trim();
+  if (!question) return;
+
+  $chatInput.value = '';
+  $chatBtn.disabled = true;
+
+  addMessage('user', question);
+  showTyping();
+
+  try {
+    const res  = await fetch(`${API}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json();
+    removeTyping();
+
+    let answer = data.answer || 'No response received.';
+    if (data.suggested_command) {
+      answer += `\n\n**Suggested command:**\n\`${data.suggested_command}\``;
+    }
+    if (data.anomaly_score > 0) {
+      answer += `\n\n**Anomaly score:** \`${data.anomaly_score.toFixed(3)}\``;
+    }
+
+    addMessage('assistant', answer, data.sources || []);
+  } catch (err) {
+    removeTyping();
+    addMessage('assistant', `Request failed: ${err.message}. Is the KOGNOS API running?`, []);
+  } finally {
+    $chatBtn.disabled = false;
+    $chatInput.focus();
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  connectWS();
+  await fetchGraph();
+
+  // Also poll alerts via HTTP as fallback
+  setInterval(async () => {
+    try {
+      const res  = await fetch(`${API}/alerts`);
+      const data = await res.json();
+      renderAlerts(data.alerts || []);
+    } catch {}
+  }, ALERTS_REFRESH_MS);
+
+  setInterval(fetchGraph, GRAPH_REFRESH_MS);
+}
+
+// Resize handler: re-render graph on window resize
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => renderGraph(graphData), 250);
+});
+
+init();
+</script>
+</body>
+</html>
