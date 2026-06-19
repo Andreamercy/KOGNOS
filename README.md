@@ -6,6 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-Geometric-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch-geometric.readthedocs.io)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.28+-326CE5?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
+[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat)](LICENSE)
 
 ---
@@ -20,7 +21,7 @@ KOGNOS is a three-layer observability platform that:
 2. **Reasons** over the cluster topology using a Graph Neural Network that understands pod dependencies
 3. **Converses** — engineers ask natural language questions and get grounded, actionable answers backed by live cluster context
 
-Built as a hackathon concept for the **ABB Accelerator Program**, targeting the problem of cascading failure detection and intelligent incident response at enterprise scale.
+Targeting the problem of cascading failure detection and intelligent incident response at enterprise scale.
 
 ---
 
@@ -682,4 +683,4 @@ GitHub: [@Andreamercy](https://github.com/Andreamercy)
 
 ---
 
-*Built for the ABB Accelerator Hackathon · Targeting Juspay-scale distributed systems intelligence*
+*Multi-Agent Kubernetes Observability · eBPF · Graph Neural Networks · RAG*
